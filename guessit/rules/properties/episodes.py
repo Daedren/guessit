@@ -355,7 +355,8 @@ def episodes(config):
     rebulk.rules(WeakConflictSolver, RemoveInvalidSeason, RemoveInvalidEpisode,
                  SeePatternRange(range_separators + ['_']),
                  EpisodeNumberSeparatorRange(range_separators),
-                 SeasonSeparatorRange(range_separators), RemoveWeakIfMovie, RemoveWeakIfSxxExx, RemoveWeakDuplicate,
+                 SeasonSeparatorRange(range_separators), SeasonEpisodeSplitter(season_words),
+                 RemoveWeakIfMovie, RemoveWeakIfSxxExx, RemoveWeakDuplicate,
                  EpisodeDetailValidator, RemoveDetachedEpisodeNumber, VersionValidator, RemoveWeak(episode_words),
                  RenameToAbsoluteEpisode, CountValidator, EpisodeSingleDigitValidator, RenameToDiscMatch)
 
@@ -635,6 +636,88 @@ class SeasonSeparatorRange(AbstractSeparatorRange):
 
     def __init__(self, range_separators):
         super().__init__(range_separators, "season")
+
+
+class SeasonEpisodeSplitter(Rule):
+    """
+    Convert season matches to episode when pattern is: Season <word> <num> - <num>
+    
+    Handles cases like "Season 2 - 04" where 04 should be episode, not season.
+    This rule only applies when:
+    - A season word (Season, Series, Temporada, etc.) is present in the initiator
+    - NOT when using compact format like "S01"
+    - Followed by a season number
+    - Followed by a separator and another number with leading zero
+    
+    This prevents "Season 2 - 04" from being interpreted as seasons [2, 3, 4].
+    """
+    priority = 130  # Higher than SeasonSeparatorRange (128)
+    consequence = [RemoveMatch, AppendMatch]
+
+    def __init__(self, season_words):
+        super().__init__()
+        self.season_words = [w.lower() for w in season_words]
+
+    def when(self, matches, context):
+        to_remove = []
+        to_append = []
+
+        # Group season matches by their initiator
+        initiators_seen = set()
+        
+        for season_match in matches.named('season'):
+            if not season_match.initiator:
+                continue
+            
+            initiator = season_match.initiator
+            
+            # Skip if we've already processed this initiator
+            if id(initiator) in initiators_seen:
+                continue
+            initiators_seen.add(id(initiator))
+            
+            # Check if initiator starts with an actual season word (not just "S")
+            initiator_text = initiator.raw.lower()
+            starts_with_season_word = False
+            for season_word in self.season_words:
+                if initiator_text.startswith(season_word):
+                    starts_with_season_word = True
+                    break
+            
+            # Skip if not starting with a season word (e.g., "S01 02 03")
+            if not starts_with_season_word:
+                continue
+            
+            # Get all season matches for this initiator
+            season_matches = list(initiator.children.named('season'))
+            
+            # We need at least 2 season matches for this pattern
+            if len(season_matches) < 2:
+                continue
+            
+            # Sort by position
+            season_matches = sorted(season_matches, key=lambda m: m.start)
+            
+            # Check remaining seasons (after the first one) - they might be episodes
+            for i in range(1, len(season_matches)):
+                candidate = season_matches[i]
+                
+                # Check if this looks like an episode number:
+                # Must have a leading zero (e.g., "04")
+                raw_value = candidate.raw
+                if raw_value.startswith('0'):
+                    # Convert this season match to an episode match
+                    episode_match = copy.copy(candidate)
+                    episode_match.name = 'episode'
+                    episode_match.value = candidate.value
+                    
+                    # Remove from season matches, add as episode
+                    to_remove.append(candidate)
+                    to_append.append(episode_match)
+
+        if to_remove or to_append:
+            return to_remove, to_append
+        return False
 
 
 class RemoveWeakIfMovie(Rule):

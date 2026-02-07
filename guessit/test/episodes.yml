@@ -4770,3 +4770,15 @@
   video_codec: H.264
   release_group: NOGRP
   type: episode
+
+? '[SubsPlease] Sousou no Frieren S2 - 04 (1080p) [698A157A].mkv'
+: release_group: "SubsPlease"
+  title: "Sousou no Frieren"
+  season: 2
+  episode: 4
+
+? '[Erai-raws] Sono Bisque Doll wa Koi o Suru Season 2 - 04 [1080p CR WEB-DL AVC AAC][MultiSub][6FBDF3B2].mkv'
+: release_group: "Erai-raws"
+  title: "Sono Bisque Doll wa Koi o Suru"
+  season: 2
+  episode: 4
